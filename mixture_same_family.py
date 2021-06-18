@@ -204,8 +204,6 @@ class MixtureSameFamily(Distribution):
         return 'MixtureSameFamily' + '(' + args_string + ')'
 
 
-
-
 class ReparametrizedMixtureSameFamily(MixtureSameFamily):
     """
     Adds rsample method to the MixtureSameFamily method
@@ -280,6 +278,7 @@ class ReparametrizedMixtureSameFamily(MixtureSameFamily):
             # At the moment there isn't an efficient batch-Jacobian implementation
             # in PyTorch, so we have to loop over the batch.
             # TODO: Use batch-Jacobian, once one is implemented in PyTorch.
+            # or vmap: https://github.com/pytorch/pytorch/issues/42368
             jac = x_2d.new_zeros(x_2d.shape + (x_2d.shape[-1],))
             for i in range(x_2d.shape[0]):
                 jac[i, ...] = jacobian(self._distributional_transform, x_2d[i, ...]).detach()
