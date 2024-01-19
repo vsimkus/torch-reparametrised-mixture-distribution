@@ -6,6 +6,5 @@ Can be readily used for variational inference with mixture distribution variatio
 
 Remarks:
 
-* I have mainly used it for 1-dimensional variational inference, so I would advice to use this with caution in higher-dimensional settings.
-* The Jacobian computation in >1 dimensional settings may be slow, since it loops over the batch dimension. At this time PyTorch does not have an efficient batch-aware implementation of the Jacobian. Might be able to speed it up using `vmap` from <https://github.com/pytorch/pytorch/issues/42368> or <https://github.com/facebookresearch/functorch>.
-* Also added a `StableNormal` distribution, which overrides the default `cdf` method with a more stable implementation from <https://github.com/pytorch/pytorch/issues/52973#issuecomment-787587188>. The implementation also provides a `_log_cdf` method, however it is not necessary for the implicit reparametrisation.
+* For multivariate mixtures, the class is currently implemented when the mixture component distributions fully factorise. 
+* Also added a `StableNormal` distribution, which overrides the default `cdf` method with a more stable implementation from <https://github.com/pytorch/pytorch/issues/52973#issuecomment-787587188>. The implementation also provides a `_log_cdf` method, however it is not used for the implicit reparametrisation.

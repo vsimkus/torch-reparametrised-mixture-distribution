@@ -206,7 +206,7 @@ class MixtureSameFamily(Distribution):
 
 class ReparametrizedMixtureSameFamily(MixtureSameFamily):
     """
-    Adds rsample method to the MixtureSameFamily method
+    Adds rsample method to the MixtureSameFamily class
     that implements implicit reparametrization.
     """
     has_rsample = True
@@ -215,7 +215,7 @@ class ReparametrizedMixtureSameFamily(MixtureSameFamily):
         super().__init__(*args, **kwargs)
 
         if not self._component_distribution.has_rsample:
-            raise ValueError('Cannot reparameterize a mixture of non-reparameterized components.')
+            raise ValueError('Cannot reparameterize a mixture of non-reparameterizable components.')
 
         # NOTE: Not necessary for implicit reparametrisation.
         if not callable(getattr(self._component_distribution, '_log_cdf', None)):
@@ -258,6 +258,8 @@ class ReparametrizedMixtureSameFamily(MixtureSameFamily):
             Tensor with same value as x, but with reparameterization gradients
         """
         x = self.sample(sample_shape=sample_shape)
+        if not torch.is_grad_enabled():
+            return x
 
         event_size = prod(self.event_shape)
         if event_size != 1:
@@ -270,18 +272,25 @@ class ReparametrizedMixtureSameFamily(MixtureSameFamily):
                 return torch.reshape(
                         self._distributional_transform(x_2d.reshape(x.shape)),
                         x_2d_shape)
-
-            # transform_2d: [S*prod(B), prod(E)]
-            # jacobian: [S*prod(B), prod(E), prod(E)]
+                
             x_2d = x.reshape(x_2d_shape)
+            
+            # Compute transform (the gradients of this transform will be computed using autodiff)
+            # transform_2d: [S*prod(B), prod(E)]
             transform_2d = reshaped_distributional_transform(x_2d)
-            # At the moment there isn't an efficient batch-Jacobian implementation
-            # in PyTorch, so we have to loop over the batch.
-            # TODO: Use batch-Jacobian, once one is implemented in PyTorch.
-            # or vmap: https://github.com/pytorch/pytorch/issues/42368
-            jac = x_2d.new_zeros(x_2d.shape + (x_2d.shape[-1],))
-            for i in range(x_2d.shape[0]):
-                jac[i, ...] = jacobian(self._distributional_transform, x_2d[i, ...]).detach()
+            
+            # Compute the Jacobian of the distributional transform
+            def batched_jacobian_of_reshaped_distributional_transform(x_2d):
+                # Used to compute the batched Jacobian for a function that takes a (B, N) and produces (B, M). 
+                # NOTE: the function must be independent for each element in B. Otherwise, this would be incorrect.
+                # See: https://pytorch.org/functorch/1.13/notebooks/jacobians_hessians.html#batch-jacobian-and-batch-hessian
+                def reshaped_distributional_transform_summed(x_2d):
+                    return torch.sum(
+                            reshaped_distributional_transform(x_2d),
+                            dim=0)
+                return jacobian(reshaped_distributional_transform_summed, x_2d).detach().movedim(1, 0)
+            # jacobian: [S*prod(B), prod(E), prod(E)]
+            jac = batched_jacobian_of_reshaped_distributional_transform(x_2d)
 
             # We only provide the first derivative; the second derivative computed by
             # autodiff would be incorrect, so we raise an error if it is requested.
